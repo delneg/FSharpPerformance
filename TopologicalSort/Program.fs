@@ -284,53 +284,13 @@ module Data =
             
     
 [<MemoryDiagnoser>]
-//[<HardwareCounters(
-//   HardwareCounter.BranchMispredictions,
-//   HardwareCounter.BranchInstructions,
-//   HardwareCounter.CacheMisses)>]
-//[<DisassemblyDiagnoser>]
-//[<SimpleJob(launchCount=3, warmupCount: 10, targetCount: 30)>]
+[<HardwareCounters(
+   HardwareCounter.BranchMispredictions,
+   HardwareCounter.BranchInstructions,
+   HardwareCounter.CacheMisses)>]
+[<DisassemblyDiagnoser>]
 type Benchmarks () =
     
-    let mutable v9data = []
-    let mutable v10data = []
-    let rng = Random Data.rngSeed
-        
-    // Create the list of Nodes that we will use
-    [<GlobalSetup>]
-    member self.SetupData () =
-       let v9nodes =
-            [for i in 0 .. Data.nodeCount - 1 ->
-                Version9.Node.create i]
-            
-       v9data <- [for _ in 1 .. Data.graphCount ->
-                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
-                     // We use a weighted distribution for the number of edges
-                       for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
-                         let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
-                         let source = v9nodes[sourceIdx]
-                         let target = v9nodes[targetIdx]
-                         Version9.Edge.create source target |]
-                    |> Array.distinct    
-                    |> Version9.Graph.create
-                ]
-       
-       let v10nodes =
-            [for i in 0 .. Data.nodeCount - 1 ->
-                Version10.Node.create i]
-       
-       v10data <- [for _ in 1 .. Data.graphCount ->
-                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
-                     // We use a weighted distribution for the number of edges
-                     for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
-                         let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
-                         let source = v10nodes[sourceIdx]
-                         let target = v10nodes[targetIdx]
-                         Version10.Edge.create source target |]
-                    |> Array.distinct    
-                    |> Version10.Graph.create
-                ]
-       
 //    [<Benchmark>]
 //    member _.Version_01 () =
 //        let mutable result = None
@@ -411,7 +371,7 @@ type Benchmarks () =
 //            result <- sortedOrder
 //
 //        result 
-
+//
 //
 //    [<Benchmark>]
 //    member _.Version_08 () =
@@ -428,7 +388,7 @@ type Benchmarks () =
     member _.Version_09 () =
         let mutable result = None
         
-        for graph in v9data do
+        for graph in Data.Version9.graphs do
             // I separate the assignment so I can set a breakpoint in debugging
             let sortedOrder = Version9.sort graph
             result <- sortedOrder
@@ -439,9 +399,9 @@ type Benchmarks () =
     member _.Version_10 () =
         let mutable result = None
         
-        for graph in v10data do
+        for graph in Data.Version10.graphs do
             // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version10.sort graph
+            let sortedOrder = Version10.Graph.GraphType.Sort graph
             result <- sortedOrder
 
         result 
@@ -483,13 +443,13 @@ let profile (version: string) loopCount =
 //            match b.Version_05 () with
 //            | Some order -> result <- result + 1
 //            | None -> result <- result - 1
-//            
+            
 //    | "v6" ->
 //        for i in 1 .. loopCount do
 //            match b.V06 () with
 //            | Some order -> result <- result + 1
 //            | None -> result <- result - 1
-
+//
 //    | "v7" ->
 //        for i in 1 .. loopCount do
 //            match b.Version_07 () with
