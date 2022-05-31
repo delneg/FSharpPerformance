@@ -18,33 +18,12 @@ let inline stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
   let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
   Span<'a>(p, length)
 
-//let inline stackAlloc2 size = Span<'a>(size |> NativePtr.stackalloc<'a> |> NativePtr.toVoidPtr, size)
-     
-[<Struct;IsByRefLike>]
-type StackStack<'T>(values: Span<'T>) =
-    [<DefaultValue>] val mutable private _count : int
-    
-    member s.Push v =
-        if s._count < values.Length then
-            values[s._count] <- v
-            s._count <- s._count + 1
-        else
-            failwith "Exceeded capacity of StackStack"
-        
-    member s.Pop () =
-        if s._count > 0 then
-            s._count <- s._count - 1
-            values[s._count]
-        else
-            failwith "Empty StackStack"
-            
-    member s.Count = s._count
-            
-    member s.ToArray () =
-        let newArray = GC.AllocateUninitializedArray s._count
-        for i in 0 .. newArray.Length - 1 do
-            newArray[i] <- values[i]
-        newArray
+let inline retype (x: 'T) : 'U = (# "" x: 'U #)
+
+module Array =
+    let inline stripUoM (x: '``Num<'M>`` []) =
+        let _ = Unchecked.defaultof<'``Num<'M>``> * (LanguagePrimitives.GenericOne : 'Num)
+        retype x :'Num []
         
 
 [<RequireQualifiedAccess>]
@@ -93,7 +72,12 @@ module Edge =
     let inline getTarget (edge: Edge) =
         int edge
         |> LanguagePrimitives.Int32WithMeasure<Units.Node>
-        
+    
+    let inline getSourceBatch (vedge: Vector<int64>) =
+        Vector.ShiftRightLogical(vedge, 32) |> Vector.AsVectorInt32
+
+    let inline getTargetBatch (vedge: Vector<int64>) =
+        vedge |> Vector.AsVectorInt32
     
 [<IsByRefLike; Struct>]
 type EdgeTracker (nodeCount: int, values: Span<uint64>) =
@@ -108,10 +92,23 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
         let source = Edge.getSource edge
         let target = Edge.getTarget edge
         let location = (int source) * b.NodeCount + (int target)
+        
         let bucket = location >>> 6
         let offset = location &&& 0x3F
         let mask = 1UL <<< offset
         b.Values[bucket] <- b.Values[bucket] ||| mask
+    
+    member inline b.BatchAdd(edge: Vector<int64>) =
+        let sources = Edge.getSourceBatch edge
+        let targets = Edge.getTargetBatch edge
+        let locations = sources * b.NodeCount + targets
+        let locationsArr: Span<int> = GC.AllocateUninitializedArray(64).AsSpan()
+        locations.CopyTo(locationsArr)
+        for location in locationsArr do
+            let bucket = location >>> 6
+            let offset = location &&& 0x3F
+            let mask = 1UL <<< offset
+            b.Values[bucket] <- b.Values[bucket] ||| mask
         
     member inline b.Remove (edge: Edge) =
         let source = Edge.getSource edge
@@ -129,11 +126,20 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
         let bucket = location >>> 6
         let offset = location &&& 0x3F
         ((b.Values[bucket] >>> offset) &&& 1UL) <> 1UL
+        
+    member inline b.Contains (edge: Edge) =
+        let source = Edge.getSource edge
+        let target = Edge.getTarget edge
+        let location = (int source) * b.NodeCount + (int target)
+        let bucket = location >>> 6
+        let offset = location &&& 0x3F
+        ((b.Values[bucket] >>> offset) &&& 1UL) = 1UL
+        
     member b.Clear () =
         for i = 0 to b.Values.Length - 1 do
             b.Values[i] <- 0UL
 
-    member b.Count =
+    member inline b.Count =
         match b.ValuesCount with
         | ValueSome x -> x
         | ValueNone ->
@@ -190,7 +196,6 @@ type SourceRanges = Bar<Units.Node, Range>
 type SourceEdges = Bar<Units.Index, Edge>
 type TargetRanges = Bar<Units.Node, Range>
 type TargetEdges = Bar<Units.Index, Edge>
-
 
 type Graph = {
     SourceRanges : SourceRanges
@@ -272,15 +277,14 @@ module Graph =
         }        
 
     
-    type GraphType() =
-        
-        static member inline Sort(graph: Graph) =
+    type GraphType() =        
+        static member Sort(graph: Graph) =
             let sourceRanges = graph.SourceRanges
             let sourceEdges = graph.SourceEdges
             let targetRanges = graph.TargetRanges
             let targetEdges = graph.TargetEdges
-            
-            let result = GC.AllocateUninitializedArray (int sourceRanges.Length)
+            let sourceRangeLength = int sourceRanges.Length
+            let result = GC.AllocateUninitializedArray (sourceRangeLength)
             let mutable nextToProcessIdx = 0
             let mutable resultCount = 0
             
@@ -292,10 +296,11 @@ module Graph =
                     resultCount <- resultCount + 1
                 nodeId <- nodeId + 1<Units.Node>
             
-            let bitsRequired = ((int sourceRanges.Length * int sourceRanges.Length) + 63) / 64
-            let remainingEdges = EdgeTracker (bitsRequired, stackalloc<uint64> bitsRequired)
+            let bitsRequired = ((sourceRangeLength * sourceRangeLength) + 63) / 64
+            let remainingEdges = EdgeTracker (sourceRangeLength, (GC.AllocateUninitializedArray bitsRequired).AsSpan())
 
-            
+//            printfn $"Edges count: {sourceEdges._Values.Length}, target edges: {targetEdges._Values.Length}"
+//            remainingEdges.BatchAdd(Vector(sourceEdges._Values |> Array.stripUoM))
             for edge in sourceEdges._Values do
                 remainingEdges.Add(edge)
             
@@ -306,7 +311,7 @@ module Graph =
                 let bound = targetRange.Start + targetRange.Length
                 while targetIndex < bound do
                     remainingEdges.Remove targetEdges[targetIndex]
-                    
+            
                     // Check if all of the Edges have been removed for this
                     // Target Node
                     let targetNodeId = Edge.getTarget targetEdges[targetIndex]

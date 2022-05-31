@@ -310,13 +310,66 @@ module Data =
     
     
 [<MemoryDiagnoser>]
-[<HardwareCounters(
-   HardwareCounter.BranchMispredictions,
-   HardwareCounter.BranchInstructions,
-   HardwareCounter.CacheMisses)>]
-[<DisassemblyDiagnoser>]
+//[<HardwareCounters(
+//   HardwareCounter.BranchMispredictions,
+//   HardwareCounter.BranchInstructions,
+//   HardwareCounter.CacheMisses)>]
+//[<DisassemblyDiagnoser>]
 type Benchmarks () =
-    
+    let mutable v9data = []
+    let mutable v10data = []
+    let mutable v11data = []
+    let rng = Random Data.rngSeed
+        
+    // Create the list of Nodes that we will use
+    [<GlobalSetup>]
+    member self.SetupData () =
+       let v9nodes =
+            [for i in 0 .. Data.nodeCount - 1 ->
+                Version9.Node.create i]
+            
+       v9data <- [for _ in 1 .. Data.graphCount ->
+                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
+                     // We use a weighted distribution for the number of edges
+                       for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
+                         let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
+                         let source = v9nodes[sourceIdx]
+                         let target = v9nodes[targetIdx]
+                         Version9.Edge.create source target |]
+                    |> Array.distinct    
+                    |> Version9.Graph.create
+                ]
+       
+       let v10nodes =
+            [for i in 0 .. Data.nodeCount - 1 ->
+                Version10.Node.create i]
+       
+       v10data <- [for _ in 1 .. Data.graphCount ->
+                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
+                     // We use a weighted distribution for the number of edges
+                     for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
+                         let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
+                         let source = v10nodes[sourceIdx]
+                         let target = v10nodes[targetIdx]
+                         Version10.Edge.create source target |]
+                    |> Array.distinct    
+                    |> Version10.Graph.create
+                ]
+       let v11nodes =
+            [for i in 0 .. Data.nodeCount - 1 ->
+                Version11.Node.create i]
+       
+       v11data <- [for _ in 1 .. Data.graphCount ->
+                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
+                     // We use a weighted distribution for the number of edges
+                         for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
+                             let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
+                             let source = v11nodes[sourceIdx]
+                             let target = v11nodes[targetIdx]
+                             Version11.Edge.create source target |]
+                    |> Array.distinct    
+                    |> Version11.Graph.create
+                ]
 //    [<Benchmark>]
 //    member _.Version_01 () =
 //        let mutable result = None
@@ -410,16 +463,16 @@ type Benchmarks () =
 //
 //        result
         
-    [<Benchmark>]
-    member _.Version_09 () =
-        let mutable result = None
-        
-        for graph in Data.Version9.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version9.sort graph
-            result <- sortedOrder
-
-        result
+//    [<Benchmark>]
+//    member _.Version_09 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version9.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version9.sort graph
+//            result <- sortedOrder
+//
+//        result
         
     [<Benchmark>]
     member _.Version_10 () =
@@ -499,11 +552,11 @@ let profile (version: string) loopCount =
 //            | Some order -> result <- result + 1
 //            | None -> result <- result - 1
             
-    | "v9" ->
-        for i in 1 .. loopCount do
-            match b.Version_09 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
+//    | "v9" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_09 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
             
     | "v10" ->
         for i in 1 .. loopCount do
