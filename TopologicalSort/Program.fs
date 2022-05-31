@@ -240,7 +240,7 @@ module Data =
         // Create the list of Nodes that we will use
         let nodes =
             [for i in 0 .. nodeCount - 1 ->
-                Node.create i]
+                TopologicalSort.Version9.Node.create i]
             
         // Generate the random Graphs we will solve
         let graphs =
@@ -284,111 +284,151 @@ module Data =
             
     
 [<MemoryDiagnoser>]
-[<HardwareCounters(
-   HardwareCounter.BranchMispredictions,
-   HardwareCounter.BranchInstructions,
-   HardwareCounter.CacheMisses)>]
-[<DisassemblyDiagnoser>]
+//[<HardwareCounters(
+//   HardwareCounter.BranchMispredictions,
+//   HardwareCounter.BranchInstructions,
+//   HardwareCounter.CacheMisses)>]
+//[<DisassemblyDiagnoser>]
+//[<SimpleJob(launchCount=3, warmupCount: 10, targetCount: 30)>]
 type Benchmarks () =
     
-    [<Benchmark>]
-    member _.Version_01 () =
-        let mutable result = None
+    let mutable v9data = []
+    let mutable v10data = []
+    let rng = Random Data.rngSeed
         
-        for graph in Data.Version1.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version1.sort graph
-            result <- sortedOrder
+    // Create the list of Nodes that we will use
+    [<GlobalSetup>]
+    member self.SetupData () =
+       let v9nodes =
+            [for i in 0 .. Data.nodeCount - 1 ->
+                Version9.Node.create i]
+            
+       v9data <- [for _ in 1 .. Data.graphCount ->
+                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
+                     // We use a weighted distribution for the number of edges
+                       for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
+                         let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
+                         let source = v9nodes[sourceIdx]
+                         let target = v9nodes[targetIdx]
+                         Version9.Edge.create source target |]
+                    |> Array.distinct    
+                    |> Version9.Graph.create
+                ]
+       
+       let v10nodes =
+            [for i in 0 .. Data.nodeCount - 1 ->
+                Version10.Node.create i]
+       
+       v10data <- [for _ in 1 .. Data.graphCount ->
+                     [|for sourceIdx in 0 .. Data.nodeCount - 2 do
+                     // We use a weighted distribution for the number of edges
+                     for _ in 1 .. Data.randomEdgeCount[(rng.Next Data.randomEdgeCount.Length)] do
+                         let targetIdx = rng.Next (sourceIdx + 1, Data.nodeCount - 1)
+                         let source = v10nodes[sourceIdx]
+                         let target = v10nodes[targetIdx]
+                         Version10.Edge.create source target |]
+                    |> Array.distinct    
+                    |> Version10.Graph.create
+                ]
+       
+//    [<Benchmark>]
+//    member _.Version_01 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version1.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version1.sort graph
+//            result <- sortedOrder
+//
+//        result        
+//        
+//    [<Benchmark>]
+//    member _.Version_02 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version2.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version2.sort graph
+//            result <- sortedOrder
+//
+//        result  
+//        
+//        
+//    [<Benchmark>]
+//    member _.Version_03 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version3.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version3.sort graph
+//            result <- sortedOrder
+//
+//        result  
+//        
+//        
+//    [<Benchmark>]
+//    member _.Version_04 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version4.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version4.sort graph
+//            result <- sortedOrder
+//
+//        result  
+//        
+//        
+//    [<Benchmark>]
+//    member _.Version_05 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version5.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version5.sort graph
+//            result <- sortedOrder
+//
+//        result  
+//
+//    
+//    [<Benchmark>]
+//    member _.Version_06 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version6.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version6.sort graph
+//            result <- sortedOrder
+//
+//        result
+//        
+//    [<Benchmark>]
+//    member _.Version_07 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version7.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version7.sort graph
+//            result <- sortedOrder
+//
+//        result 
 
-        result        
-        
-    [<Benchmark>]
-    member _.Version_02 () =
-        let mutable result = None
-        
-        for graph in Data.Version2.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version2.sort graph
-            result <- sortedOrder
-
-        result  
-        
-        
-    [<Benchmark>]
-    member _.Version_03 () =
-        let mutable result = None
-        
-        for graph in Data.Version3.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version3.sort graph
-            result <- sortedOrder
-
-        result  
-        
-        
-    [<Benchmark>]
-    member _.Version_04 () =
-        let mutable result = None
-        
-        for graph in Data.Version4.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version4.sort graph
-            result <- sortedOrder
-
-        result  
-        
-        
-    [<Benchmark>]
-    member _.Version_05 () =
-        let mutable result = None
-        
-        for graph in Data.Version5.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version5.sort graph
-            result <- sortedOrder
-
-        result  
-
-    
-    [<Benchmark>]
-    member _.Version_06 () =
-        let mutable result = None
-        
-        for graph in Data.Version6.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version6.sort graph
-            result <- sortedOrder
-
-        result
-        
-    [<Benchmark>]
-    member _.Version_07 () =
-        let mutable result = None
-        
-        for graph in Data.Version7.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version7.sort graph
-            result <- sortedOrder
-
-        result 
-
-
-    [<Benchmark>]
-    member _.Version_08 () =
-        let mutable result = None
-        
-        for graph in Data.Version8.graphs do
-            // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version8.sort graph
-            result <- sortedOrder
-
-        result
+//
+//    [<Benchmark>]
+//    member _.Version_08 () =
+//        let mutable result = None
+//        
+//        for graph in Data.Version8.graphs do
+//            // I separate the assignment so I can set a breakpoint in debugging
+//            let sortedOrder = Version8.sort graph
+//            result <- sortedOrder
+//
+//        result
         
     [<Benchmark>]
     member _.Version_09 () =
         let mutable result = None
         
-        for graph in Data.Version9.graphs do
+        for graph in v9data do
             // I separate the assignment so I can set a breakpoint in debugging
             let sortedOrder = Version9.sort graph
             result <- sortedOrder
@@ -399,7 +439,7 @@ type Benchmarks () =
     member _.Version_10 () =
         let mutable result = None
         
-        for graph in Data.Version10.graphs do
+        for graph in v10data do
             // I separate the assignment so I can set a breakpoint in debugging
             let sortedOrder = Version10.sort graph
             result <- sortedOrder
@@ -412,55 +452,55 @@ let profile (version: string) loopCount =
     let mutable result = 0
     
     match version.ToLower() with
-    | "v1" ->
-        for i in 1 .. loopCount do
-            match b.Version_01 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
-            
-    | "v2" ->
-        for i in 1 .. loopCount do
-            match b.Version_02 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
-            
-    | "v3" ->
-        for i in 1 .. loopCount do
-            match b.Version_03 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
-            
-            
-    | "v4" ->
-        for i in 1 .. loopCount do
-            match b.Version_04 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
-            
-            
-    | "v5" ->
-        for i in 1 .. loopCount do
-            match b.Version_05 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
-            
+//    | "v1" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_01 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
+//            
+//    | "v2" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_02 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
+//            
+//    | "v3" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_03 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
+//            
+//            
+//    | "v4" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_04 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
+//            
+//            
+//    | "v5" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_05 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
+//            
 //    | "v6" ->
 //        for i in 1 .. loopCount do
 //            match b.V06 () with
 //            | Some order -> result <- result + 1
 //            | None -> result <- result - 1
 
-    | "v7" ->
-        for i in 1 .. loopCount do
-            match b.Version_07 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
-            
-    | "v8" ->
-        for i in 1 .. loopCount do
-            match b.Version_08 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
+//    | "v7" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_07 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
+//            
+//    | "v8" ->
+//        for i in 1 .. loopCount do
+//            match b.Version_08 () with
+//            | Some order -> result <- result + 1
+//            | None -> result <- result - 1
             
     | "v9" ->
         for i in 1 .. loopCount do
@@ -475,7 +515,8 @@ let profile (version: string) loopCount =
             | None -> result <- result - 1
             
     | unknownVersion -> failwith $"Unknown version: {unknownVersion}" 
-            
+    
+    printfn $"Got result {result} after {loopCount} iterations"
     result
 
 
