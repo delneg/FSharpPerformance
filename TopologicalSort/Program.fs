@@ -282,6 +282,32 @@ module Data =
                 |> Graph.create
             ]
             
+    module Version11 =
+    
+        open TopologicalSort.Version11
+        
+        // Create a new random number generator with the same seed
+        let rng = Random rngSeed
+        
+        // Create the list of Nodes that we will use
+        let nodes =
+            [for i in 0 .. nodeCount - 1 ->
+                Node.create i]
+            
+        // Generate the random Graphs we will solve
+        let graphs =
+            [for _ in 1 .. graphCount ->
+                [|for sourceIdx in 0 .. nodeCount - 2 do
+                     // We use a weighted distribution for the number of edges
+                     for _ in 1 .. randomEdgeCount[(rng.Next randomEdgeCount.Length)] do
+                         let targetIdx = rng.Next (sourceIdx + 1, nodeCount - 1)
+                         let source = nodes[sourceIdx]
+                         let target = nodes[targetIdx]
+                         Edge.create source target |]
+                |> Array.distinct    
+                |> Graph.create
+            ]
+    
     
 [<MemoryDiagnoser>]
 [<HardwareCounters(
@@ -401,7 +427,18 @@ type Benchmarks () =
         
         for graph in Data.Version10.graphs do
             // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version10.Graph.GraphType.Sort graph
+            let sortedOrder = Version10.sort graph
+            result <- sortedOrder
+
+        result
+   
+    [<Benchmark>]
+    member _.Version_11 () =
+        let mutable result = None
+        
+        for graph in Data.Version11.graphs do
+            // I separate the assignment so I can set a breakpoint in debugging
+            let sortedOrder = Version11.Graph.GraphType.Sort graph
             result <- sortedOrder
 
         result 
@@ -471,6 +508,12 @@ let profile (version: string) loopCount =
     | "v10" ->
         for i in 1 .. loopCount do
             match b.Version_10 () with
+            | Some order -> result <- result + 1
+            | None -> result <- result - 1
+    
+    | "v11" ->
+        for i in 1 .. loopCount do
+            match b.Version_11 () with
             | Some order -> result <- result + 1
             | None -> result <- result - 1
             
