@@ -10,6 +10,7 @@ open System
 open System.Collections.Generic
 open System.Numerics
 open System.Runtime.CompilerServices
+open System.Threading.Tasks
 open FSharp.NativeInterop
 open Row
 
@@ -197,6 +198,7 @@ type SourceEdges = Bar<Units.Index, Edge>
 type TargetRanges = Bar<Units.Node, Range>
 type TargetEdges = Bar<Units.Index, Edge>
 
+[<Struct>]
 type Graph = {
     SourceRanges : SourceRanges
     SourceEdges : SourceEdges
@@ -278,7 +280,7 @@ module Graph =
 
     
     type GraphType() =        
-        static member Sort(graph: Graph) =
+        static member Sort(graph: inref<Graph>) =
             let sourceRanges = graph.SourceRanges
             let sourceEdges = graph.SourceEdges
             let targetRanges = graph.TargetRanges
@@ -301,6 +303,11 @@ module Graph =
 
 //            printfn $"Edges count: {sourceEdges._Values.Length}, target edges: {targetEdges._Values.Length}"
 //            remainingEdges.BatchAdd(Vector(sourceEdges._Values |> Array.stripUoM))
+//            let parallelOptions = ParallelOptions(MaxDegreeOfParallelism = max (min Environment.ProcessorCount sourceEdges._Values.Length) 1)
+//            Parallel.For(0, sourceEdges._Values.Length, parallelOptions, fun i ->
+//                remainingEdges.Add(sourceEdges._Values[i])
+//            ) |> ignore
+//            sourceEdges._Values |> Array.Parallel.iter (fun edge -> remainingEdges.Add(edge))
             for edge in sourceEdges._Values do
                 remainingEdges.Add(edge)
             
@@ -335,6 +342,6 @@ module Graph =
 
 
             if remainingEdges.Count > 0 then
-                None
+                ValueNone
             else
-                Some result
+                ValueSome result

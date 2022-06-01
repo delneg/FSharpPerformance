@@ -487,11 +487,11 @@ type Benchmarks () =
    
     [<Benchmark>]
     member _.Version_11 () =
-        let mutable result = None
+        let mutable result = ValueNone
         
         for graph in Data.Version11.graphs do
             // I separate the assignment so I can set a breakpoint in debugging
-            let sortedOrder = Version11.Graph.GraphType.Sort graph
+            let sortedOrder = Version11.Graph.GraphType.Sort &graph
             result <- sortedOrder
 
         result 
@@ -567,8 +567,8 @@ let profile (version: string) loopCount =
     | "v11" ->
         for i in 1 .. loopCount do
             match b.Version_11 () with
-            | Some order -> result <- result + 1
-            | None -> result <- result - 1
+            | ValueSome order -> result <- result + 1
+            | ValueNone -> result <- result - 1
             
     | unknownVersion -> failwith $"Unknown version: {unknownVersion}" 
     
