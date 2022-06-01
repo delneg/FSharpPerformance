@@ -85,9 +85,25 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
     
 //    [<DefaultValue>] val mutable ValuesCount: int voption
     // Public for the purposes of inlining
-    
+    //bucket * offset * mask 
+    member b.SourceTargetCache = Dictionary<int64, struct (int*int*uint64)>()
     member b.NodeCount = nodeCount
     member b.Values = values
+//    member b.Filter = FilterBuilder.Build(b.NodeCount, 0.01, EdgeTracker.algo) 
+    
+    member inline b.GetSourceAndTargetData(edge: Edge) =
+        if b.SourceTargetCache.ContainsKey(int64 edge) then
+            b.SourceTargetCache[int64 edge]
+        else
+            let source = Edge.getSource edge
+            let target = Edge.getTarget edge
+            let location = (int source) * b.NodeCount + (int target)
+            let bucket = location >>> 6
+            let offset = location &&& 0x3F
+            let mask = 1UL <<< offset
+            let s = struct (bucket,offset,mask)
+            b.SourceTargetCache.Add(int64 edge, s)
+            s
     
     member inline b.Add (edge: Edge) =
         let source = Edge.getSource edge
@@ -97,6 +113,8 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
         let bucket = location >>> 6
         let offset = location &&& 0x3F
         let mask = 1UL <<< offset
+//        b.Filter.Add(int64 edge) |> ignore
+//        let struct (bucket, _,mask) = b.GetSourceAndTargetData(edge)
         b.Values[bucket] <- b.Values[bucket] ||| mask
     
     member inline b.BatchAdd(edge: Vector<int64>) =
@@ -118,9 +136,11 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
         let bucket = location >>> 6
         let offset = location &&& 0x3F
         let mask = 1UL <<< offset
+//        let struct (bucket, _,mask) = b.GetSourceAndTargetData(edge)
         b.Values[bucket] <- b.Values[bucket] &&& ~~~mask
 
     member inline b.NotContains (edge: Edge) =
+//        let struct (bucket, offset,_) = b.GetSourceAndTargetData(edge)
         let source = Edge.getSource edge
         let target = Edge.getTarget edge
         let location = (int source) * b.NodeCount + (int target)
@@ -129,6 +149,7 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
         ((b.Values[bucket] >>> offset) &&& 1UL) <> 1UL
         
     member inline b.Contains (edge: Edge) =
+//        let struct (bucket, offset,_) = b.GetSourceAndTargetData(edge)
         let source = Edge.getSource edge
         let target = Edge.getTarget edge
         let location = (int source) * b.NodeCount + (int target)
@@ -279,7 +300,39 @@ module Graph =
         }        
 
     
-    type GraphType() =        
+    type GraphType() =
+        static member inline AddToTracker(tracker: Span<uint64>,nodeCount:int, edge: Edge) =
+            let source = Edge.getSource edge
+            let target = Edge.getTarget edge
+            let location = (int source) * nodeCount + (int target)
+            
+            let bucket = location >>> 6
+            let offset = location &&& 0x3F
+            let mask = 1UL <<< offset
+            tracker[bucket] <- tracker[bucket] ||| mask
+        
+        static member inline RemoveFromTracker(tracker: Span<uint64>, nodeCount: int, edge: Edge) =
+            let source = Edge.getSource edge
+            let target = Edge.getTarget edge
+            let location = (int source) * nodeCount + (int target)
+            let bucket = location >>> 6
+            let offset = location &&& 0x3F
+            let mask = 1UL <<< offset
+            tracker[bucket] <- tracker[bucket] &&& ~~~mask
+        
+        static member inline TrackerNotContains(tracker: Span<uint64>,nodeCount: int, edge: Edge) =
+            let source = Edge.getSource edge
+            let target = Edge.getTarget edge
+            let location = (int source) * nodeCount + (int target)
+            let bucket = location >>> 6
+            let offset = location &&& 0x3F
+            ((tracker[bucket] >>> offset) &&& 1UL) <> 1UL
+        
+        static member inline TrackerCount(tracker: Span<uint64>) =
+            let mutable count = 0
+            for i = 0 to tracker.Length - 1 do            
+                count <- count + (BitOperations.PopCount tracker[i])
+            count
         static member Sort(graph: inref<Graph>) =
             let sourceRanges = graph.SourceRanges
             let sourceEdges = graph.SourceEdges
@@ -299,8 +352,8 @@ module Graph =
                 nodeId <- nodeId + 1<Units.Node>
             
             let bitsRequired = ((sourceRangeLength * sourceRangeLength) + 63) / 64
-            let remainingEdges = EdgeTracker (sourceRangeLength, (GC.AllocateUninitializedArray bitsRequired).AsSpan())
-
+            let remainingEdges = (GC.AllocateUninitializedArray bitsRequired)
+            let remainingEdgesSpan = remainingEdges.AsSpan()
 //            printfn $"Edges count: {sourceEdges._Values.Length}, target edges: {targetEdges._Values.Length}"
 //            remainingEdges.BatchAdd(Vector(sourceEdges._Values |> Array.stripUoM))
 //            let parallelOptions = ParallelOptions(MaxDegreeOfParallelism = max (min Environment.ProcessorCount sourceEdges._Values.Length) 1)
@@ -308,8 +361,11 @@ module Graph =
 //                remainingEdges.Add(sourceEdges._Values[i])
 //            ) |> ignore
 //            sourceEdges._Values |> Array.Parallel.iter (fun edge -> remainingEdges.Add(edge))
+//            sourceEdges._Values |> Array.Parallel.iter (fun edge -> GraphType.AddToTracker(remainingEdges, sourceRangeLength, edge))
+//            
             for edge in sourceEdges._Values do
-                remainingEdges.Add(edge)
+                GraphType.AddToTracker(remainingEdgesSpan, sourceRangeLength, edge)
+//                remainingEdges.Add(edge)
             
             while nextToProcessIdx < result.Length && nextToProcessIdx < resultCount do
 
@@ -317,7 +373,8 @@ module Graph =
                 let mutable targetIndex = targetRange.Start
                 let bound = targetRange.Start + targetRange.Length
                 while targetIndex < bound do
-                    remainingEdges.Remove targetEdges[targetIndex]
+                    GraphType.RemoveFromTracker(remainingEdgesSpan, sourceRangeLength, targetEdges[targetIndex])
+//                    remainingEdges.Remove targetEdges[targetIndex]
             
                     // Check if all of the Edges have been removed for this
                     // Target Node
@@ -329,7 +386,8 @@ module Graph =
                     let bound = range.Start + range.Length
 
                     while sourceIndex < bound && noRemainingSourcesResult do
-                        noRemainingSourcesResult <- remainingEdges.NotContains sourceEdges[sourceIndex]
+                        noRemainingSourcesResult <- GraphType.TrackerNotContains(remainingEdgesSpan, sourceRangeLength, sourceEdges[sourceIndex])
+//                        noRemainingSourcesResult <- remainingEdges.NotContains sourceEdges[sourceIndex]
                         sourceIndex <- sourceIndex + LanguagePrimitives.Int32WithMeasure<Units.Index> 1
                                             
                     if noRemainingSourcesResult then
@@ -341,7 +399,7 @@ module Graph =
                 nextToProcessIdx <- nextToProcessIdx + 1
 
 
-            if remainingEdges.Count > 0 then
+            if GraphType.TrackerCount(remainingEdges) > 0 then
                 ValueNone
             else
                 ValueSome result
