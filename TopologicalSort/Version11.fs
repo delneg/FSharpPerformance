@@ -74,7 +74,7 @@ module Edge =
         |> LanguagePrimitives.Int32WithMeasure<Units.Node>
     
     let inline getSourceBatch (vedge: Vector<int64>) =
-        Vector.ShiftRightLogical(vedge, 32) |> Vector.AsVectorInt32
+        Vector.ShiftRightArithmetic(vedge, 32) |> Vector.AsVectorInt32
 
     let inline getTargetBatch (vedge: Vector<int64>) =
         vedge |> Vector.AsVectorInt32
@@ -82,7 +82,7 @@ module Edge =
 [<IsByRefLike; Struct>]
 type EdgeTracker (nodeCount: int, values: Span<uint64>) =
     
-    [<DefaultValue>] val mutable ValuesCount: int voption
+//    [<DefaultValue>] val mutable ValuesCount: int voption
     // Public for the purposes of inlining
     
     member b.NodeCount = nodeCount
@@ -140,13 +140,13 @@ type EdgeTracker (nodeCount: int, values: Span<uint64>) =
             b.Values[i] <- 0UL
 
     member inline b.Count =
-        match b.ValuesCount with
-        | ValueSome x -> x
-        | ValueNone ->
+//        match b.ValuesCount with
+//        | ValueSome x -> x
+//        | ValueNone ->
             let mutable count = 0
             for i = 0 to b.Values.Length - 1 do            
                 count <- count + (BitOperations.PopCount b.Values[i])
-            b.ValuesCount <- ValueSome count
+//            b.ValuesCount <- ValueSome count
             count
 
 [<Struct>]
