@@ -1,21 +1,10 @@
 ﻿module TopologicalSort.Version11
-#nowarn "9"
-
-(*
-Version 9:
-
-*)
 
 open System
 open System.Collections.Generic
 open System.Numerics
-open System.Runtime.CompilerServices
 open System.Runtime.InteropServices
-open System.Threading.Tasks
-open FSharp.NativeInterop
-open ObjectLayoutInspector
 open Row
-
 
 [<RequireQualifiedAccess>]
 module private Units =
@@ -64,11 +53,6 @@ module Edge =
         int edge
         |> LanguagePrimitives.Int32WithMeasure<Units.Node>
     
-    let inline getSourceBatch (vedge: Vector<int64>) =
-        Vector.ShiftRightArithmetic(vedge, 32) |> Vector.AsVectorInt32
-
-    let inline getTargetBatch (vedge: Vector<int64>) =
-        vedge |> Vector.AsVectorInt32
         
 [<Struct>]
 type Range =
@@ -177,7 +161,7 @@ module Graph =
         }        
 
     
-    type GraphType() =
+    type GraphType =
         static member inline AddToTracker(tracker: Span<uint64>,nodeCount:int, edge: Edge) =
             let source = Edge.getSource edge
             let target = Edge.getTarget edge
@@ -196,6 +180,7 @@ module Graph =
             let offset = location &&& 0x3F
             let mask = 1UL <<< offset
             tracker[bucket] <- tracker[bucket] &&& ~~~mask
+            target
         
         static member inline TrackerNotContains(tracker: Span<uint64>,nodeCount: int, edge: Edge) =
             let source = Edge.getSource edge
@@ -218,9 +203,7 @@ module Graph =
             let targetRanges = graph.TargetRanges
             let targetEdges = graph.TargetEdges
             let sourceRangeLength = int sourceRanges.Length
-            TypeLayout.PrintLayout<Graph>(true)
-            TypeLayout.PrintLayout<Range>(true)
-            let result = GC.AllocateUninitializedArray (sourceRangeLength)
+            let result = GC.AllocateUninitializedArray sourceRangeLength
             let mutable nextToProcessIdx = 0
             let mutable resultCount = 0
             
@@ -244,11 +227,9 @@ module Graph =
                 let mutable targetIndex = targetRange.Start
                 let bound = targetRange.Start + targetRange.Length
                 while targetIndex < bound do
-                    GraphType.RemoveFromTracker(remainingEdgesSpan, sourceRangeLength, targetEdges[targetIndex])
-            
                     // Check if all of the Edges have been removed for this
                     // Target Node
-                    let targetNodeId = Edge.getTarget targetEdges[targetIndex]
+                    let targetNodeId = GraphType.RemoveFromTracker(remainingEdgesSpan, sourceRangeLength, targetEdges[targetIndex])
                     
                     let mutable noRemainingSourcesResult = true
                     let range = sourceRanges[targetNodeId]
